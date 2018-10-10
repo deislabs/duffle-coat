@@ -5,6 +5,12 @@ import * as path from 'path';
 
 import { promptBundle, fileBundleSelection, repoBundleSelection, BundleSelection, parseNameOnly } from './utils/bundleselection';
 import { RepoBundle, RepoBundleRef } from './duffle/duffle.objectmodel';
+import { downloadZip } from './utils/download';
+import { failed } from './utils/errorable';
+
+// Uh-oh, it's private
+// const DUFFLE_BAG_ZIP_LOCATION = "https://github.com/itowlson/duffle-bag/archive/pathfinding.zip";
+const DUFFLE_BAG_ZIP_LOCATION = "https://itowlsonmsbatest.blob.core.windows.net/dbag/duffle-bag-pathfinding.zip";
 
 export function activate(context: vscode.ExtensionContext) {
     const disposables = [
@@ -69,7 +75,15 @@ async function generateCore(bundlePick: BundleSelection): Promise<void> {
     // create the self-installer framework under the parent folder
     // copy the bundle JSON into ${folder}/data/bundle.json
     // fix up the package.json and other places where the bundle name is hardwired
-    await vscode.window.showInformationMessage(folder);
+    const dl = await downloadZip(DUFFLE_BAG_ZIP_LOCATION, folder);
+    if (failed(dl)) {
+        vscode.window.showErrorMessage(dl.error[0]);
+        return;
+    }
+
+    // TODO: the extracted files end up in ${folder}/duffle-bag-pathfinding which
+    // is not what we want.  BUT HEY THEY'RE THERE AND THAT'S PRETTY NEAT.
+    await vscode.window.showInformationMessage(`YAY DOWNLOADED TEMPLATE AND EXTRACTED to ${folder}`);
 
     // const manifest = await bundleManifest(bundlePick);
     // if (failed(manifest)) {

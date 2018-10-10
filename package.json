@@ -46,11 +46,19 @@
         "postinstall": "node ./node_modules/vscode/bin/install",
         "test": "npm run compile && node ./node_modules/vscode/bin/test"
     },
+    "dependencies": {
+        "@types/extract-zip": "^1.6.2",
+        "@types/request": "^2.47.1",
+        "@types/request-promise-native": "^1.0.15",
+        "extract-zip": "^1.6.7",
+        "request": "^2.88.0",
+        "request-promise-native": "^1.0.5"
+    },
     "devDependencies": {
         "typescript": "^2.6.1",
-        "vscode": "^1.1.6",
+        "vscode": "^1.1.21",
         "tslint": "^5.8.0",
-        "@types/node": "^7.0.43",
+        "@types/node": "^8.10.25",
         "@types/mocha": "^2.2.42"
     }
 }
