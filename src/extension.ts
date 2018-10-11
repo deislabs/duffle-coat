@@ -97,7 +97,19 @@ async function generateCore(bundlePick: BundleSelection): Promise<void> {
         return;
     }
 
-    await vscode.window.showInformationMessage(`YORE SELF-INSTALER AWATES IN ${folder} FARE DEVEPELOR`);
+    const commands = [
+        {
+            title: "Open in Code",
+            onSelected: () => vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(folder), true)
+        }, {
+            title: "Open in Terminal",
+            onSelected: () => vscode.window.createTerminal({ cwd: folder }).show()
+        }
+    ];
+    const action = await vscode.window.showInformationMessage(`YORE SELF-INSTALER AWATES IN ${folder} FARE DEVEPELOR`, ...commands);
+    if (action) {
+        action.onSelected();
+    }
 }
 
 async function setBundle(folder: string, bundle: BundleManifest): Promise<Errorable<null>> {
