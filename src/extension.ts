@@ -3,12 +3,16 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 
-import { promptBundle, fileBundleSelection, repoBundleSelection, BundleSelection, parseNameOnly } from './utils/bundleselection';
-import { RepoBundle, RepoBundleRef } from './duffle/duffle.objectmodel';
+import { promptBundle, fileBundleSelection, repoBundleSelection, BundleSelection, parseNameOnly, bundleManifest } from './utils/bundleselection';
+import { RepoBundle, RepoBundleRef, BundleManifest } from './duffle/duffle.objectmodel';
 import { downloadZip } from './utils/download';
-import { failed } from './utils/errorable';
+import { failed, Errorable } from './utils/errorable';
+import { fs } from './utils/fs';
 
-// Uh-oh, it's private
+// TODO: We won't be able to use this for real - I had to rework the zip file structure
+// to not include a top-level directory called duffle-bag-pathfinding.  And fs.rename
+// was refusing to let me unzip to a temp location and move that directory to the desired
+// location.  So a bit more digging needed.
 // const DUFFLE_BAG_ZIP_LOCATION = "https://github.com/itowlson/duffle-bag/archive/pathfinding.zip";
 const DUFFLE_BAG_ZIP_LOCATION = "https://itowlsonmsbatest.blob.core.windows.net/dbag/duffle-bag-pathfinding.zip";
 
@@ -81,33 +85,55 @@ async function generateCore(bundlePick: BundleSelection): Promise<void> {
         return;
     }
 
-    // TODO: the extracted files end up in ${folder}/duffle-bag-pathfinding which
-    // is not what we want.  BUT HEY THEY'RE THERE AND THAT'S PRETTY NEAT.
-    await vscode.window.showInformationMessage(`YAY DOWNLOADED TEMPLATE AND EXTRACTED to ${folder}`);
+    const bundleInfo = await bundleManifest(bundlePick);
+    if (failed(bundleInfo)) {
+        vscode.window.showErrorMessage(bundleInfo.error[0]);
+        return;
+    }
 
-    // const manifest = await bundleManifest(bundlePick);
-    // if (failed(manifest)) {
-    //     vscode.window.showErrorMessage(`Unable to load bundle: ${manifest.error[0]}`);
-    //     return;
-    // }
+    const m = await setBundle(folder, bundleInfo.result);
+    if (failed(m)) {
+        vscode.window.showErrorMessage(m.error[0]);
+        return;
+    }
 
-    // const credentialSet = await promptForCredentials(manifest.result, shell.shell, 'Credential set to install bundle with');
-    // if (credentialSet.cancelled) {
-    //     return;
-    // }
+    await vscode.window.showInformationMessage(`YORE SELF-INSTALER AWATES IN ${folder} FARE DEVEPELOR`);
+}
 
-    // const parameterValues = await promptForParameters(bundlePick, manifest.result, 'Install', 'Enter installation parameters');
-    // if (parameterValues.cancelled) {
-    //     return;
-    // }
+async function setBundle(folder: string, bundle: BundleManifest): Promise<Errorable<null>> {
+    const siBundleFile = path.join(folder, "data", "bundle.json");
+    // const siRootPackageJSON = path.join(folder, "package.json");  // TODO: do we need to mangle this
+    const siAppPackageJSON = path.join(folder, "app", "package.json");
+    const siAppHTML = path.join(folder, "app", "app.html");
 
-    // const installResult = await installTo(bundlePick, name, parameterValues.value, credentialSet.value);
+    try {
+        await fs.writeFile(siBundleFile, JSON.stringify(bundle, undefined, 2));
+    } catch (e) {
+        return { succeeded: false, error: [`Can't write bundle.json to self-installer: ${e}`] };
+    }
 
-    // if (succeeded(installResult)) {
-    //     await refreshBundleExplorer();
-    // }
+    try {
+        const appPackageJSON = await fs.readFile(siAppPackageJSON, 'utf8');
+        const appPackage = JSON.parse(appPackageJSON);
+        appPackage.name = `${safeName(bundle.name)}-duffle-self-installer`;
+        appPackage.productName = appPackage.name;
+        appPackage.description = `Self-installer for the ${bundle.name} CNAB bundle`;
+        appPackage.author.name = process.env['USERNAME'] || process.env['USER'] || 'unknown';
+        appPackage.author.email = `${appPackage.author.name}@example.com`;
+        await fs.writeFile(siAppPackageJSON, JSON.stringify(appPackage, undefined, 2));
+    } catch (e) {
+        return { succeeded: false, error: [`Can't update self-installer's package.json: ${e}`] };
+    }
 
-    // await showDuffleResult('install', (bundleId) => bundleId, installResult);
+    try {
+        const html = await fs.readFile(siAppHTML, 'utf8');
+        const fixedHTML = html.replace('<title>Duffle Bag</title>', `<title>Install ${bundle.name}</title>`);
+        await fs.writeFile(siAppHTML, fixedHTML);
+    } catch (e) {
+        return { succeeded: false, error: [`Can't update self-installer's window title: ${e}`] };
+    }
+
+    return { succeeded: true, result: null };
 }
 
 const GENERATE_NAME_ILLEGAL_CHARACTERS = /[^A-Za-z0-9_-]/g;
