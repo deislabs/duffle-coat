@@ -9,6 +9,7 @@ import { downloadZip } from './utils/download';
 import { failed, Errorable } from './utils/errorable';
 import { fs } from './utils/fs';
 import { Cancellable, cancelled, accepted } from './utils/cancellable';
+import { longRunning } from './utils/host';
 
 // TODO: We won't be able to use this for real - I had to rework the zip file structure
 // to not include a top-level directory called duffle-bag-pathfinding.  And fs.rename
@@ -92,7 +93,9 @@ async function generateCore(bundlePick: BundleSelection): Promise<void> {
 
     if (action === FolderAction.Overwrite) {
         try {
-            await fs.remove(folder);
+            await longRunning("Removing existing files...", () =>
+                fs.remove(folder)
+            );
         } catch (e) {
             await vscode.window.showErrorMessage(`Can't overwrite folder ${folder}: ${e}`);
             return;
@@ -100,7 +103,9 @@ async function generateCore(bundlePick: BundleSelection): Promise<void> {
     }
 
     if (action === FolderAction.Overwrite || action === FolderAction.New) {
-        const dl = await downloadZip(DUFFLE_BAG_ZIP_LOCATION, folder);
+        const dl = await longRunning("Downloading self-installer template...", () =>
+            downloadZip(DUFFLE_BAG_ZIP_LOCATION, folder)
+        );
         if (failed(dl)) {
             vscode.window.showErrorMessage(dl.error[0]);
             return;
