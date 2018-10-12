@@ -122,7 +122,7 @@ async function generateCore(bundlePick: BundleSelection): Promise<void> {
             onSelected: () => vscode.window.createTerminal({ cwd: folder }).show()
         }
     ];
-    const openAction = await vscode.window.showInformationMessage(`YORE SELF-INSTALER AWATES IN ${folder} FARE DEVEPELOR`, ...commands);
+    const openAction = await vscode.window.showInformationMessage(`Your self-installer has been generated into ${folder}. Run 'npm install' followed by 'npm run dev' to test.`, ...commands);
     if (openAction) {
         openAction.onSelected();
     }
