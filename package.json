@@ -48,9 +48,11 @@
     },
     "dependencies": {
         "@types/extract-zip": "^1.6.2",
+        "@types/fs-extra": "^5.0.4",
         "@types/request": "^2.47.1",
         "@types/request-promise-native": "^1.0.15",
         "extract-zip": "^1.6.7",
+        "fs-extra": "^7.0.0",
         "request": "^2.88.0",
         "request-promise-native": "^1.0.5"
     },

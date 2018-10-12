@@ -8,6 +8,7 @@ import { RepoBundle, RepoBundleRef, BundleManifest } from './duffle/duffle.objec
 import { downloadZip } from './utils/download';
 import { failed, Errorable } from './utils/errorable';
 import { fs } from './utils/fs';
+import { Cancellable, cancelled, accepted } from './utils/cancellable';
 
 // TODO: We won't be able to use this for real - I had to rework the zip file structure
 // to not include a top-level directory called duffle-bag-pathfinding.  And fs.rename
@@ -62,6 +63,12 @@ async function generateRepoBundle(bundle: RepoBundle): Promise<void> {
 async function generateCore(bundlePick: BundleSelection): Promise<void> {
     const name = safeName(bundlePick.label);
 
+    const bundleInfo = await bundleManifest(bundlePick);
+    if (failed(bundleInfo)) {
+        vscode.window.showErrorMessage(bundleInfo.error[0]);
+        return;
+    }
+
     const parentFolders = await vscode.window.showOpenDialog({
         canSelectFiles: false,
         canSelectFolders: true,
@@ -74,24 +81,33 @@ async function generateCore(bundlePick: BundleSelection): Promise<void> {
     }
 
     const parentFolder = parentFolders[0].fsPath;
-    const folder = path.join(parentFolder, name);
+    const suggestedFolder = path.join(parentFolder, name);
 
-    // create the self-installer framework under the parent folder
-    // copy the bundle JSON into ${folder}/data/bundle.json
-    // fix up the package.json and other places where the bundle name is hardwired
-    const dl = await downloadZip(DUFFLE_BAG_ZIP_LOCATION, folder);
-    if (failed(dl)) {
-        vscode.window.showErrorMessage(dl.error[0]);
+    const g = await getGenerationOption(suggestedFolder);
+    if (g.cancelled) {
         return;
     }
 
-    const bundleInfo = await bundleManifest(bundlePick);
-    if (failed(bundleInfo)) {
-        vscode.window.showErrorMessage(bundleInfo.error[0]);
-        return;
+    const { action, folder } = g.value;
+
+    if (action === FolderAction.Overwrite) {
+        try {
+            await fs.remove(folder);
+        } catch (e) {
+            await vscode.window.showErrorMessage(`Can't overwrite folder ${folder}: ${e}`);
+            return;
+        }
     }
 
-    const m = await setBundle(folder, bundleInfo.result);
+    if (action === FolderAction.Overwrite || action === FolderAction.New) {
+        const dl = await downloadZip(DUFFLE_BAG_ZIP_LOCATION, folder);
+        if (failed(dl)) {
+            vscode.window.showErrorMessage(dl.error[0]);
+            return;
+        }
+    }
+
+    const m = await setBundle(g.value.folder, bundleInfo.result);
     if (failed(m)) {
         vscode.window.showErrorMessage(m.error[0]);
         return;
@@ -106,9 +122,9 @@ async function generateCore(bundlePick: BundleSelection): Promise<void> {
             onSelected: () => vscode.window.createTerminal({ cwd: folder }).show()
         }
     ];
-    const action = await vscode.window.showInformationMessage(`YORE SELF-INSTALER AWATES IN ${folder} FARE DEVEPELOR`, ...commands);
-    if (action) {
-        action.onSelected();
+    const openAction = await vscode.window.showInformationMessage(`YORE SELF-INSTALER AWATES IN ${folder} FARE DEVEPELOR`, ...commands);
+    if (openAction) {
+        openAction.onSelected();
     }
 }
 
@@ -125,7 +141,7 @@ async function setBundle(folder: string, bundle: BundleManifest): Promise<Errora
     }
 
     try {
-        const appPackageJSON = await fs.readFile(siAppPackageJSON, 'utf8');
+        const appPackageJSON = await fs.readFile(siAppPackageJSON, { encoding: 'utf8' });
         const appPackage = JSON.parse(appPackageJSON);
         appPackage.name = `${safeName(bundle.name)}-duffle-self-installer`;
         appPackage.productName = appPackage.name;
@@ -138,7 +154,7 @@ async function setBundle(folder: string, bundle: BundleManifest): Promise<Errora
     }
 
     try {
-        const html = await fs.readFile(siAppHTML, 'utf8');
+        const html = await fs.readFile(siAppHTML, { encoding: 'utf8' });
         const fixedHTML = html.replace('<title>Duffle Bag</title>', `<title>Install ${bundle.name}</title>`);
         await fs.writeFile(siAppHTML, fixedHTML);
     } catch (e) {
@@ -146,6 +162,47 @@ async function setBundle(folder: string, bundle: BundleManifest): Promise<Errora
     }
 
     return { succeeded: true, result: null };
+}
+
+enum FolderAction { New, Overwrite, Update }
+
+interface GenerateInto {
+    readonly action: FolderAction;
+    readonly folder: string;
+}
+
+async function getGenerationOption(targetFolder: string): Promise<Cancellable<GenerateInto>> {
+    if (!await fs.exists(targetFolder)) {
+        return accepted({ action: FolderAction.New, folder: targetFolder });
+    }
+
+    const alreadyExistsCommands = [
+        {
+            title: "Update Bundle Only",
+            onSelected: async () => accepted({ action: FolderAction.Update, folder: targetFolder })
+        },
+        {
+            title: "Overwrite Folder",
+            onSelected: async () => accepted({ action: FolderAction.Overwrite, folder: targetFolder })
+        },
+        {
+            title: "Use Different Folder",
+            onSelected: async () => {
+                const parentFolder = path.dirname(targetFolder);
+                const subfolder = await vscode.window.showInputBox({ prompt: `Generate into folder (under ${parentFolder})...` });
+                if (!subfolder) {
+                    return cancelled;
+                }
+                return await getGenerationOption(path.join(parentFolder, subfolder));
+            }
+        }
+    ];
+
+    const selection = await vscode.window.showWarningMessage(`Folder ${targetFolder} already exists`, ...alreadyExistsCommands);
+    if (!selection) {
+        return { cancelled: true };
+    }
+    return await selection.onSelected();
 }
 
 const GENERATE_NAME_ILLEGAL_CHARACTERS = /[^A-Za-z0-9_-]/g;
