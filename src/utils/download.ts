@@ -1,5 +1,6 @@
 import * as request from 'request-promise-native';
 import * as extract from 'extract-zip';
+import * as tmp from 'tmp';
 import { promisify } from 'util';
 
 import { fs } from './fs';
@@ -19,12 +20,13 @@ export async function download(source: string, destination: string): Promise<Err
 
 export async function downloadZip(source: string, destinationFolder: string): Promise<Errorable<null>> {
     try {
-        const tempFile = "d:\\temp\\tempywempy.zip";
-        const dl = await download(source, tempFile);
+        const tempFileObj = tmp.fileSync({ prefix: "duffle-coat-" });
+        const dl = await download(source, tempFileObj.name);
         if (failed(dl)) {
             return dl;
         }
-        await extractAsync(tempFile, { dir: destinationFolder });
+        await extractAsync(tempFileObj.name, { dir: destinationFolder });
+        tempFileObj.removeCallback();
         return { succeeded: true, result: null };
     } catch (e) {
         return { succeeded: false, error: [`${e}`] };
