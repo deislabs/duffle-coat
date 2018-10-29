@@ -5,7 +5,7 @@ import * as path from 'path';
 
 import { promptBundle, fileBundleSelection, repoBundleSelection, BundleSelection, parseNameOnly, bundleManifest } from './utils/bundleselection';
 import { RepoBundle, RepoBundleRef, BundleManifest } from './duffle/duffle.objectmodel';
-import { downloadZip } from './utils/download';
+import { downloadZip, downloadTar } from './utils/download';
 import { failed, Errorable } from './utils/errorable';
 import { fs } from './utils/fs';
 import { Cancellable, cancelled, accepted } from './utils/cancellable';
@@ -16,7 +16,7 @@ import { longRunning } from './utils/host';
 // was refusing to let me unzip to a temp location and move that directory to the desired
 // location.  So a bit more digging needed.
 // const DUFFLE_BAG_ZIP_LOCATION = "https://github.com/itowlson/duffle-bag/archive/pathfinding.zip";
-const DUFFLE_BAG_ZIP_LOCATION = "https://itowlsonmsbatest.blob.core.windows.net/dbag/duffle-bag-pathfinding.zip";
+const DUFFLE_BAG_ZIP_LOCATION = "https://itowlsonmsbatest.blob.core.windows.net/dbag/duffle-bag-edb.zip";
 
 export function activate(context: vscode.ExtensionContext) {
     const disposables = [
@@ -25,6 +25,9 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(...disposables);
 }
+
+type Platform = 'windows' | 'darwin' | 'linux';
+const PLATFORMS: Platform[] = ['windows', 'darwin', 'linux'];
 
 async function generate(target?: any): Promise<void> {
     if (!target) {
@@ -107,14 +110,22 @@ async function generateCore(bundlePick: BundleSelection): Promise<void> {
             downloadZip(DUFFLE_BAG_ZIP_LOCATION, folder)
         );
         if (failed(dl)) {
-            vscode.window.showErrorMessage(dl.error[0]);
+            vscode.window.showErrorMessage(`Downloading self-installer template failed: ${dl.error[0]}`);
             return;
         }
     }
 
-    const m = await setBundle(g.value.folder, bundleInfo.result);
-    if (failed(m)) {
-        vscode.window.showErrorMessage(m.error[0]);
+    const sb = await setBundle(g.value.folder, bundleInfo.result);
+    if (failed(sb)) {
+        vscode.window.showErrorMessage(sb.error[0]);
+        return;
+    }
+
+    const dlbin = await longRunning("Downloading Duffle binaries...", () =>
+        downloadDuffleBinaries(g.value.folder)
+    );
+    if (failed(dlbin)) {
+        vscode.window.showErrorMessage(`Downloading Duffle binaries failed: ${dlbin.error[0]}`);
         return;
     }
 
@@ -188,6 +199,25 @@ async function setBundle(folder: string, bundle: BundleManifest): Promise<Errora
     }
 
     return { succeeded: true, result: null };
+}
+
+async function downloadDuffleBinaries(targetFolder: string): Promise<Errorable<null>> {
+    const dufflebinPath = path.join(targetFolder, 'dufflebin');
+    const dltasks = PLATFORMS.map((p) => downloadDuffleBinary(dufflebinPath, p));
+    const dlresults = await Promise.all(dltasks);
+    const firstFail = dlresults.find((r) => failed(r));
+    if (firstFail) {
+        return firstFail;
+    }
+    return { succeeded: true, result: null };
+}
+
+async function downloadDuffleBinary(dufflebinPath: string, platform: Platform): Promise<Errorable<null>> {
+    // TODO: for testing purposes, this is the Draft download location.  It needs to be replaced
+    // with the Duffle download location.
+    // TODO: make sure this doesn't conflict with having the directories .gitkeep-ed in the template.
+    const source = `https://azuredraft.blob.core.windows.net/draft/draft-v0.15.0-${platform}-amd64.tar.gz`;
+    return await downloadTar(source, dufflebinPath);
 }
 
 enum FolderAction { New, Overwrite, Update }
