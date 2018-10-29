@@ -135,7 +135,7 @@ async function generateCore(bundlePick: BundleSelection): Promise<void> {
 
 async function setBundle(folder: string, bundle: BundleManifest): Promise<Errorable<null>> {
     const siBundleFile = path.join(folder, "data", "bundle.json");
-    // const siRootPackageJSON = path.join(folder, "package.json");  // TODO: do we need to mangle this
+    const siRootPackageJSON = path.join(folder, "package.json");
     const siAppPackageJSON = path.join(folder, "app", "package.json");
     const siAppHTML = path.join(folder, "app", "app.html");
 
@@ -153,7 +153,28 @@ async function setBundle(folder: string, bundle: BundleManifest): Promise<Errora
         appPackage.description = `Self-installer for the ${bundle.name} CNAB bundle`;
         appPackage.author.name = process.env['USERNAME'] || process.env['USER'] || 'unknown';
         appPackage.author.email = `${appPackage.author.name}@example.com`;
+        delete appPackage.author.url;
         await fs.writeFile(siAppPackageJSON, JSON.stringify(appPackage, undefined, 2));
+    } catch (e) {
+        return { succeeded: false, error: [`Can't update self-installer's package.json: ${e}`] };
+    }
+
+    try {
+        const rootPackageJSON = await fs.readFile(siRootPackageJSON, { encoding: 'utf8' });
+        const rootPackage = JSON.parse(rootPackageJSON);
+        // TODO: deduplicate
+        rootPackage.name = `${safeName(bundle.name)}-duffle-self-installer`;
+        rootPackage.productName = `${rootPackage.name} Duffle Self-Installer`;
+        rootPackage.description = `Self-installer for the ${bundle.name} CNAB bundle`;
+        delete rootPackage.repository;
+        rootPackage.author.name = process.env['USERNAME'] || process.env['USER'] || 'unknown';
+        rootPackage.author.email = `${rootPackage.author.name}@example.com`;
+        delete rootPackage.author.url;
+        rootPackage.build.productName = `Self-installer - ${rootPackage.name}`;
+        rootPackage.build.appId = `com.microsoft.duffle.selfinstaller.${rootPackage.name}`;
+        delete rootPackage.bugs.url;
+        delete rootPackage.homepage;
+        await fs.writeFile(siRootPackageJSON, JSON.stringify(rootPackage, undefined, 2));
     } catch (e) {
         return { succeeded: false, error: [`Can't update self-installer's package.json: ${e}`] };
     }
