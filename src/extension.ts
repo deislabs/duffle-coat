@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 
 import { promptBundle, fileBundleSelection, repoBundleSelection, BundleSelection, parseNameOnly, bundleManifest } from './utils/bundleselection';
-import { RepoBundle, RepoBundleRef, BundleManifest } from './duffle/duffle.objectmodel';
+import { RepoBundle, RepoBundleRef, BundleManifest, LocalBundleRef, LocalBundle } from './duffle/duffle.objectmodel';
 import { downloadZip, downloadTar } from './utils/download';
 import { failed, Errorable } from './utils/errorable';
 import { fs } from './utils/fs';
@@ -36,8 +36,11 @@ async function generate(target?: any): Promise<void> {
     if (target.scheme) {
         return await generateFile(target as vscode.Uri);
     }
-    if (target.bundle) {
+    if (target.bundleLocation === 'repo') {
         return await generateRepoBundle((target as RepoBundleRef).bundle);
+    }
+    if (target.bundleLocation === 'local') {
+        return await generateLocalBundle((target as LocalBundleRef).bundle);
     }
     await vscode.window.showErrorMessage("Internal error: unexpected command target");
 }
@@ -62,6 +65,10 @@ async function generateFile(file: vscode.Uri): Promise<void> {
 
 async function generateRepoBundle(bundle: RepoBundle): Promise<void> {
     return await generateCore(repoBundleSelection(bundle));
+}
+
+async function generateLocalBundle(bundle: LocalBundle): Promise<void> {
+    return await generateCore(localBundleSelection(bundle));
 }
 
 async function generateCore(bundlePick: BundleSelection): Promise<void> {

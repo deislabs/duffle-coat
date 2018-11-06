@@ -3,11 +3,12 @@ import * as path from 'path';
 import * as request from 'request-promise-native';
 
 import { selectQuickPick } from './host';
-import { RepoBundle, BundleManifest } from '../duffle/duffle.objectmodel';
+import { RepoBundle, BundleManifest, LocalBundle } from '../duffle/duffle.objectmodel';
 import { cantHappen } from './never';
 import { fs } from './fs';
 import { Errorable, map } from './errorable';
 
+// TODO: fileify or exterminate
 export interface FolderBundleSelection {
     readonly kind: 'folder';
     readonly label: string;
@@ -20,7 +21,13 @@ export interface RepoBundleSelection {
     readonly bundle: string;
 }
 
-export type BundleSelection = FolderBundleSelection | RepoBundleSelection;
+export interface LocalBundleSelection {
+    readonly kind: 'local';
+    readonly label: string;
+    readonly bundle: string;
+}
+
+export type BundleSelection = FolderBundleSelection | RepoBundleSelection | LocalBundleSelection;
 
 export async function promptBundle(prompt: string): Promise<BundleSelection | undefined> {
     const bundles = await vscode.workspace.findFiles('**/bundle.json');
@@ -53,6 +60,14 @@ export function repoBundleSelection(bundle: RepoBundle): BundleSelection {
         kind: 'repo',
         label: bundle.name,
         bundle: `${bundle.repository}/${bundle.name}:${bundle.version}`
+    };
+}
+
+export function localBundleSelection(bundle: LocalBundle): BundleSelection {
+    return {
+        kind: 'local',
+        label: bundle.name,
+        bundle: `${bundle.name}:${bundle.version}`
     };
 }
 
