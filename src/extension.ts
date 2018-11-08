@@ -152,15 +152,20 @@ async function generateCore(bundlePick: BundleSelection): Promise<void> {
 }
 
 async function setBundle(folder: string, bundle: BundleManifest, bundleText: string): Promise<Errorable<null>> {
-    const siBundleFile = path.join(folder, "data", "bundle.json");
+    const signed = bundleText.startsWith('-');
+    const siSignedBundleFile = path.join(folder, "data", "bundle.cnab");
+    const siBundleManifest = path.join(folder, "data", "bundle.json");
     const siRootPackageJSON = path.join(folder, "package.json");
     const siAppPackageJSON = path.join(folder, "app", "package.json");
     const siAppHTML = path.join(folder, "app", "app.html");
 
     try {
-        await fs.writeFile(siBundleFile, bundleText);
+        await fs.writeFile(siBundleManifest, JSON.stringify(bundle, undefined, 2));
+        if (signed) {
+            await fs.writeFile(siSignedBundleFile, bundleText);
+        }
     } catch (e) {
-        return { succeeded: false, error: [`Can't write bundle.json to self-installer: ${e}`] };
+        return { succeeded: false, error: [`Can't write bundle file to self-installer: ${e}`] };
     }
 
     try {
