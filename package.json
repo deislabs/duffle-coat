@@ -27,7 +27,12 @@
                 {
                     "command": "dufflecoat.generate",
                     "when": "view == duffle.repoExplorer && viewItem == duffle.repoBundle",
-                    "group": "3"
+                    "group": "4"
+                },
+                {
+                    "command": "dufflecoat.generate",
+                    "when": "view == duffle.bundleExplorer && viewItem == duffle.localBundle",
+                    "group": "4"
                 }
             ],
             "explorer/context": [

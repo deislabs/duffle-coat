@@ -3,13 +3,17 @@ import * as path from 'path';
 import * as request from 'request-promise-native';
 
 import { selectQuickPick } from './host';
-import { RepoBundle, BundleManifest } from '../duffle/duffle.objectmodel';
+import { RepoBundle, BundleManifest, LocalBundle } from '../duffle/duffle.objectmodel';
 import { cantHappen } from './never';
 import { fs } from './fs';
 import { Errorable, map } from './errorable';
+// import * as duffle from '../duffle/duffle';
+import { localBundlePath } from '../duffle/duffle.paths';
+// import { shell } from './shell';
 
-export interface FolderBundleSelection {
-    readonly kind: 'folder';
+export interface FileBundleSelection {
+    readonly kind: 'file';
+    readonly signed: boolean;
     readonly label: string;
     readonly path: string;
 }
@@ -20,10 +24,21 @@ export interface RepoBundleSelection {
     readonly bundle: string;
 }
 
-export type BundleSelection = FolderBundleSelection | RepoBundleSelection;
+export interface LocalBundleSelection {
+    readonly kind: 'local';
+    readonly label: string;
+    readonly bundle: string;
+}
 
-export async function promptBundle(prompt: string): Promise<BundleSelection | undefined> {
-    const bundles = await vscode.workspace.findFiles('**/bundle.json');
+export type BundleSelection = FileBundleSelection | RepoBundleSelection | LocalBundleSelection;
+
+export interface BundleContent {
+    readonly manifest: BundleManifest;
+    readonly text: string;
+}
+
+export async function promptBundleFile(prompt: string): Promise<BundleSelection | undefined> {
+    const bundles = await workspaceBundleFiles();
     if (!bundles || bundles.length === 0) {
         await vscode.window.showErrorMessage("This command requires a bundle file in the current workspace.");
         return undefined;
@@ -31,6 +46,34 @@ export async function promptBundle(prompt: string): Promise<BundleSelection | un
 
     const bundleQuickPicks = bundles.map(fileBundleSelection);
 
+    return await promptBundle(prompt, bundleQuickPicks);
+}
+
+async function workspaceBundleFiles(): Promise<vscode.Uri[]> {
+    const unsignedBundles = vscode.workspace.findFiles('**/bundle.json');
+    const signedBundles = vscode.workspace.findFiles('**/bundle.cnab');
+    const bundles = ((await unsignedBundles) || []).concat((await signedBundles) || []);
+    return bundles;
+}
+
+// export async function promptLocalBundle(prompt: string): Promise<BundleSelection | undefined> {
+//     const bundles = await duffle.bundles(shell);
+//     if (failed(bundles)) {
+//         await vscode.window.showErrorMessage(`Can't get the list of bundles: ${bundles.error[0]}`);
+//         return undefined;
+//     }
+
+//     if (bundles.result.length === 0) {
+//         await vscode.window.showErrorMessage("This command requires at least one bundle in your local store.");
+//         return undefined;
+//     }
+
+//     const bundleQuickPicks = bundles.result.map(localBundleSelection);
+
+//     return await promptBundle(prompt, bundleQuickPicks);
+// }
+
+async function promptBundle(prompt: string, bundleQuickPicks: BundleSelection[]): Promise<BundleSelection | undefined> {
     const bundlePick = await selectQuickPick(bundleQuickPicks, { placeHolder: prompt });
     if (!bundlePick) {
         return undefined;
@@ -40,11 +83,14 @@ export async function promptBundle(prompt: string): Promise<BundleSelection | un
 }
 
 export function fileBundleSelection(bundleFile: vscode.Uri): BundleSelection {
-    const bundleDir = path.dirname(bundleFile.fsPath);
+    const bundleFilePath = bundleFile.fsPath;
+    const ext = path.extname(bundleFilePath);
+    const containingDir = path.basename(path.dirname(bundleFilePath));
     return {
-        kind: 'folder',
-        label: path.basename(bundleDir),
-        path: bundleDir
+        kind: 'file',
+        signed: ext === '.cnab',
+        label: `${containingDir}/${path.basename(bundleFilePath)}`,
+        path: bundleFilePath
     };
 }
 
@@ -52,24 +98,36 @@ export function repoBundleSelection(bundle: RepoBundle): BundleSelection {
     return {
         kind: 'repo',
         label: bundle.name,
-        bundle: `${bundle.repository}/${bundle.name}:${bundle.version}`
+        bundle: repoBundleRef(bundle)
     };
 }
 
-export async function bundleManifest(bundlePick: BundleSelection): Promise<Errorable<BundleManifest>> {
-    const jsonText = await bundleJSONText(bundlePick);
-    return map(jsonText, JSON.parse);
+export function localBundleSelection(bundle: LocalBundle): BundleSelection {
+    return {
+        kind: 'local',
+        label: bundle.name,
+        bundle: `${bundle.name}:${bundle.version}`
+    };
 }
 
-async function bundleJSONText(bundlePick: BundleSelection): Promise<Errorable<string>> {
-    if (bundlePick.kind === "folder") {
-        const jsonFile = bundleFilePath(bundlePick);
-        try {
-            return { succeeded: true, result: await fs.readFile(jsonFile, 'utf8') };
-        } catch (e) {
-            return { succeeded: false, error: [`${e}`] };
-        }
-        return { succeeded: true, result: await fs.readFile(jsonFile, 'utf8') };
+export async function bundleContent(bundlePick: BundleSelection): Promise<Errorable<BundleContent>> {
+    const bundleText = await readBundleText(bundlePick);
+    return map(bundleText, (t) => {
+        const jsonText = jsonOnly(t);
+        const manifest = JSON.parse(jsonText);
+        return { manifest: manifest, text: t };
+    });
+}
+
+export async function bundleManifest(bundlePick: BundleSelection): Promise<Errorable<BundleManifest>> {
+    const content = await bundleContent(bundlePick);
+    return map(content, (c) => c.manifest);
+}
+
+async function readBundleText(bundlePick: BundleSelection): Promise<Errorable<string>> {
+    if (bundlePick.kind === "file") {
+        const bundleFile = bundleFilePath(bundlePick);
+        return await tryReadFile(bundleFile);
     } else if (bundlePick.kind === "repo") {
         // TODO: probably stick the RepoBundle into RepoBundleSelection to save us parsing stuff out of the bundle ref string
         try {
@@ -80,12 +138,36 @@ async function bundleJSONText(bundlePick: BundleSelection): Promise<Errorable<st
         } catch (e) {
             return { succeeded: false, error: [`${e}`] };
         }
+    } else if (bundlePick.kind === "local") {
+        const bundleFile = await resolveLocalBundlePath(bundlePick);
+        if (bundleFile.succeeded) {
+            return await tryReadFile(bundleFile.result);
+        }
+        return bundleFile;
     }
     return cantHappen(bundlePick);
 }
 
-export function bundleFilePath(bundlePick: FolderBundleSelection) {
-    return path.join(bundlePick.path, "bundle.json");
+async function tryReadFile(bundleFile: string): Promise<Errorable<string>> {
+    try {
+        const text = await fs.readFile(bundleFile, 'utf8');
+        return { succeeded: true, result: text };
+    } catch (e) {
+        return { succeeded: false, error: [`${e}`] };
+    }
+}
+
+export function bundleFilePath(bundlePick: FileBundleSelection): string {
+    return bundlePick.path;
+}
+
+async function resolveLocalBundlePath(bundlePick: LocalBundleSelection): Promise<Errorable<string>> {
+    const bundleInfo = parseLocalBundle(bundlePick.bundle);
+    return await localBundlePath(bundleInfo.name, bundleInfo.version);
+}
+
+export function repoBundleRef(bundle: RepoBundle): string {
+    return `${bundle.repository}/${bundle.name}:${bundle.version}`;
 }
 
 function parseRepoBundle(bundle: string): RepoBundle {
@@ -98,8 +180,36 @@ function parseRepoBundle(bundle: string): RepoBundle {
     return { repository, name, version };
 }
 
+function parseLocalBundle(bundle: string): LocalBundle {
+    const versionDelimiter = bundle.indexOf(':');
+    const name = bundle.substring(0, versionDelimiter);
+    const version = bundle.substring(versionDelimiter + 1);
+    return { name, version };
+}
+
+function jsonOnly(source: string): string {
+    if (source.startsWith("-----BEGIN PGP SIGNED MESSAGE")) {
+        return stripSignature(source);
+    }
+    return source;
+}
+
+function stripSignature(source: string): string {
+    const lines = source.split('\n');
+    const messageStartLine = lines.findIndex((l) => l.startsWith("-----BEGIN PGP SIGNED MESSAGE"));
+    const sigStartLine = lines.findIndex((l) => l.startsWith("-----BEGIN PGP SIGNATURE"));
+    const messageLines = lines.slice(messageStartLine + 1, sigStartLine);
+    if (messageLines[0].startsWith("Hash:")) {
+        messageLines.shift();
+    }
+    return messageLines.join('\n').trim();
+}
+
 export function namespace(bundle: RepoBundle): string | undefined {
-    const name = bundle.name;
+    return prefix(bundle.name);
+}
+
+export function prefix(name: string): string | undefined {
     const sepIndex = name.indexOf('/');
     if (sepIndex < 0) {
         return undefined;
@@ -117,4 +227,20 @@ export function parseNameOnly(bundleName: string): string {
         return bundleName;
     }
     return bundleName.substring(sepIndex + 1);
+}
+
+const SAFE_NAME_ILLEGAL_CHARACTERS = /[^A-Za-z0-9_-]/g;
+
+export function suggestName(bundlePick: BundleSelection): string {
+    if (bundlePick.kind === 'file') {
+        const containingDir = path.basename(path.dirname(bundlePick.path));
+        return safeName(containingDir);
+    } else {
+        const baseName = parseNameOnly(bundlePick.label);
+        return safeName(baseName);
+    }
+}
+
+function safeName(source: string): string {
+    return source.replace(SAFE_NAME_ILLEGAL_CHARACTERS, '-');
 }

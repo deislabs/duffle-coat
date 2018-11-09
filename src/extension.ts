@@ -3,8 +3,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 
-import { promptBundle, fileBundleSelection, repoBundleSelection, BundleSelection, parseNameOnly, bundleManifest } from './utils/bundleselection';
-import { RepoBundle, RepoBundleRef, BundleManifest } from './duffle/duffle.objectmodel';
+import { fileBundleSelection, repoBundleSelection, BundleSelection, parseNameOnly, localBundleSelection, promptBundleFile, bundleContent } from './utils/bundleselection';
+import { RepoBundle, RepoBundleRef, BundleManifest, LocalBundleRef, LocalBundle } from './duffle/duffle.objectmodel';
 import { downloadZip, downloadTar } from './utils/download';
 import { failed, Errorable } from './utils/errorable';
 import { fs } from './utils/fs';
@@ -36,14 +36,17 @@ async function generate(target?: any): Promise<void> {
     if (target.scheme) {
         return await generateFile(target as vscode.Uri);
     }
-    if (target.bundle) {
+    if (target.bundleLocation === 'repo') {
         return await generateRepoBundle((target as RepoBundleRef).bundle);
+    }
+    if (target.bundleLocation === 'local') {
+        return await generateLocalBundle((target as LocalBundleRef).bundle);
     }
     await vscode.window.showErrorMessage("Internal error: unexpected command target");
 }
 
 async function generatePrompted(): Promise<void> {
-    const bundlePick = await promptBundle("Select the bundle to install");
+    const bundlePick = await promptBundleFile("Select the bundle to install");  // TODO: switch to promptLocalBundle
 
     if (!bundlePick) {
         return;
@@ -64,10 +67,14 @@ async function generateRepoBundle(bundle: RepoBundle): Promise<void> {
     return await generateCore(repoBundleSelection(bundle));
 }
 
+async function generateLocalBundle(bundle: LocalBundle): Promise<void> {
+    return await generateCore(localBundleSelection(bundle));
+}
+
 async function generateCore(bundlePick: BundleSelection): Promise<void> {
     const name = safeName(bundlePick.label);
 
-    const bundleInfo = await bundleManifest(bundlePick);
+    const bundleInfo = await bundleContent(bundlePick);
     if (failed(bundleInfo)) {
         vscode.window.showErrorMessage(bundleInfo.error[0]);
         return;
@@ -115,7 +122,7 @@ async function generateCore(bundlePick: BundleSelection): Promise<void> {
         }
     }
 
-    const sb = await setBundle(g.value.folder, bundleInfo.result);
+    const sb = await setBundle(g.value.folder, bundleInfo.result.manifest, bundleInfo.result.text);
     if (failed(sb)) {
         vscode.window.showErrorMessage(sb.error[0]);
         return;
@@ -144,16 +151,21 @@ async function generateCore(bundlePick: BundleSelection): Promise<void> {
     }
 }
 
-async function setBundle(folder: string, bundle: BundleManifest): Promise<Errorable<null>> {
-    const siBundleFile = path.join(folder, "data", "bundle.json");
+async function setBundle(folder: string, bundle: BundleManifest, bundleText: string): Promise<Errorable<null>> {
+    const signed = bundleText.startsWith('-');
+    const siSignedBundleFile = path.join(folder, "data", "bundle.cnab");
+    const siBundleManifest = path.join(folder, "data", "bundle.json");
     const siRootPackageJSON = path.join(folder, "package.json");
     const siAppPackageJSON = path.join(folder, "app", "package.json");
     const siAppHTML = path.join(folder, "app", "app.html");
 
     try {
-        await fs.writeFile(siBundleFile, JSON.stringify(bundle, undefined, 2));
+        await fs.writeFile(siBundleManifest, JSON.stringify(bundle, undefined, 2));
+        if (signed) {
+            await fs.writeFile(siSignedBundleFile, bundleText);
+        }
     } catch (e) {
-        return { succeeded: false, error: [`Can't write bundle.json to self-installer: ${e}`] };
+        return { succeeded: false, error: [`Can't write bundle file to self-installer: ${e}`] };
     }
 
     try {
