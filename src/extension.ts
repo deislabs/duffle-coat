@@ -150,12 +150,21 @@ async function generateCore(bundlePick: BundleSelection): Promise<void> {
     }
 }
 
+async function updateJSONFile(filePath: string, fn: (json: any) => void): Promise<void> {
+    const fileText = await fs.readFile(filePath, { encoding: 'utf8' });
+    const json = JSON.parse(fileText);
+    fn(json);
+    await fs.writeFile(filePath, JSON.stringify(json, undefined, 2));
+}
+
 async function setBundle(folder: string, bundle: BundleManifest, bundleText: string): Promise<Errorable<null>> {
     const signed = bundleText.startsWith('-');
     const siSignedBundleFile = path.join(folder, "data", "bundle.cnab");
     const siBundleManifest = path.join(folder, "data", "bundle.json");
     const siRootPackageJSON = path.join(folder, "package.json");
     const siAppPackageJSON = path.join(folder, "app", "package.json");
+    const siRootPackageLock = path.join(folder, "package-lock.json");
+    const siAppPackageLock = path.join(folder, "app", "package-lock.json");
     const siAppHTML = path.join(folder, "app", "app.html");
 
     try {
@@ -167,38 +176,58 @@ async function setBundle(folder: string, bundle: BundleManifest, bundleText: str
         return { succeeded: false, error: [`Can't write bundle file to self-installer: ${e}`] };
     }
 
+    const packageName = `${safeName(bundle.name)}-cnab-self-installer`;
+    const productName = `${bundle.name} CNAB Bundle Installer`;
+    const description = `Self-installer for the ${bundle.name} CNAB bundle`;
+    const authorName = process.env['USERNAME'] || process.env['USER'] || 'unknown';
+    const authorEmail = `${authorName}@example.com`;
+
     try {
-        const appPackageJSON = await fs.readFile(siAppPackageJSON, { encoding: 'utf8' });
-        const appPackage = JSON.parse(appPackageJSON);
-        appPackage.name = `${safeName(bundle.name)}-duffle-self-installer`;
-        appPackage.productName = appPackage.name;
-        appPackage.description = `Self-installer for the ${bundle.name} CNAB bundle`;
-        appPackage.author.name = process.env['USERNAME'] || process.env['USER'] || 'unknown';
-        appPackage.author.email = `${appPackage.author.name}@example.com`;
-        delete appPackage.author.url;
-        await fs.writeFile(siAppPackageJSON, JSON.stringify(appPackage, undefined, 2));
+        await updateJSONFile(siAppPackageJSON, (appPackage) => {
+            appPackage.name = packageName;
+            appPackage.productName = productName;
+            appPackage.description = description;
+            appPackage.author.name = authorName;
+            appPackage.author.email = authorEmail;
+            delete appPackage.author.url;
+        });
     } catch (e) {
         return { succeeded: false, error: [`Can't update self-installer's package.json: ${e}`] };
     }
 
     try {
-        const rootPackageJSON = await fs.readFile(siRootPackageJSON, { encoding: 'utf8' });
-        const rootPackage = JSON.parse(rootPackageJSON);
-        // TODO: deduplicate
-        rootPackage.name = `${safeName(bundle.name)}-duffle-self-installer`;
-        rootPackage.productName = `${rootPackage.name} Duffle Self-Installer`;
-        rootPackage.description = `Self-installer for the ${bundle.name} CNAB bundle`;
-        delete rootPackage.repository;
-        rootPackage.author.name = process.env['USERNAME'] || process.env['USER'] || 'unknown';
-        rootPackage.author.email = `${rootPackage.author.name}@example.com`;
-        delete rootPackage.author.url;
-        rootPackage.build.productName = `Self-installer - ${rootPackage.name}`;
-        rootPackage.build.appId = `com.microsoft.duffle.selfinstaller.${rootPackage.name}`;
-        delete rootPackage.bugs.url;
-        delete rootPackage.homepage;
-        await fs.writeFile(siRootPackageJSON, JSON.stringify(rootPackage, undefined, 2));
+        await updateJSONFile(siRootPackageJSON, (rootPackage) => {
+            // TODO: deduplicate
+            rootPackage.name = packageName;
+            rootPackage.productName = productName;
+            rootPackage.description = description;
+            delete rootPackage.repository;
+            rootPackage.author.name = authorName;
+            rootPackage.author.email = authorEmail;
+            delete rootPackage.author.url;
+            rootPackage.build.productName = productName;
+            rootPackage.build.appId = `com.microsoft.cnab.selfinstaller.${rootPackage.name}`;
+            delete rootPackage.bugs.url;
+            delete rootPackage.homepage;
+        });
     } catch (e) {
         return { succeeded: false, error: [`Can't update self-installer's package.json: ${e}`] };
+    }
+
+    try {
+        await updateJSONFile(siAppPackageLock, (lock) => {
+            lock.name = packageName;
+        });
+    } catch (e) {
+        return { succeeded: false, error: [`Can't update self-installer's package-lock.json: ${e}`] };
+    }
+
+    try {
+        await updateJSONFile(siRootPackageLock, (lock) => {
+            lock.name = packageName;
+        });
+    } catch (e) {
+        return { succeeded: false, error: [`Can't update self-installer's package-lock.json: ${e}`] };
     }
 
     try {
