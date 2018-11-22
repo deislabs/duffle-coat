@@ -3,7 +3,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 
-import { fileBundleSelection, repoBundleSelection, BundleSelection, parseNameOnly, localBundleSelection, promptBundleFile, bundleContent } from './utils/bundleselection';
+import { fileBundleSelection, repoBundleSelection, BundleSelection, parseNameOnly, localBundleSelection, promptBundleFile, bundleContent, suggestName } from './utils/bundleselection';
 import { RepoBundle, RepoBundleRef, BundleManifest, LocalBundleRef, LocalBundle } from './duffle/duffle.objectmodel';
 import { downloadZip, downloadTar } from './utils/download';
 import { failed, Errorable } from './utils/errorable';
@@ -18,7 +18,7 @@ import * as duffle from './duffle/duffle';
 // to not include a top-level directory called duffle-bag-pathfinding.  And fs.rename
 // was refusing to let me unzip to a temp location and move that directory to the desired
 // location.  So a bit more digging needed.
-const DUFFLE_BAG_ZIP_LOCATION = "https://itowlsonmsbatest.blob.core.windows.net/dbag/duffle-bag-latest.zip";
+const DUFFLE_BAG_ZIP_LOCATION = "https://itowlsonmsbatest.blob.core.windows.net/dbag/duffle-bag-thick-bundles.zip";
 
 export function activate(context: vscode.ExtensionContext) {
     const disposables = [
@@ -74,11 +74,16 @@ async function generateLocalBundle(bundle: LocalBundle): Promise<void> {
 }
 
 async function generateCore(bundlePick: BundleSelection): Promise<void> {
-    const name = safeName(bundlePick.label);
+    const name = suggestName(bundlePick);
 
     const bundleInfo = await bundleContent(bundlePick);
     if (failed(bundleInfo)) {
         vscode.window.showErrorMessage(bundleInfo.error[0]);
+        return;
+    }
+
+    const bundleKind = await promptBundleKind();
+    if (!bundleKind) {
         return;
     }
 
@@ -124,7 +129,7 @@ async function generateCore(bundlePick: BundleSelection): Promise<void> {
         }
     }
 
-    const sb = await setBundle(g.value.folder, bundleInfo.result.manifest, bundleInfo.result.text, bundlePick, true /* for now */);
+    const sb = await setBundle(g.value.folder, bundleInfo.result.manifest, bundleInfo.result.text, bundlePick, bundleKind === BundleKind.Full);
     if (failed(sb)) {
         vscode.window.showErrorMessage(sb.error[0]);
         return;
@@ -151,6 +156,23 @@ async function generateCore(bundlePick: BundleSelection): Promise<void> {
     if (openAction) {
         openAction.onSelected();
     }
+}
+
+enum BundleKind {
+    Full = 1,
+    ManifestOnly
+}
+
+async function promptBundleKind(): Promise<BundleKind | undefined> {
+    const kindOptions = [
+        { label: 'Full bundle (include all images in installer)', resultValue: BundleKind.Full },
+        { label: 'Manifest only (installer will pull images from registry)', resultValue: BundleKind.ManifestOnly },
+    ];
+    const pick = await vscode.window.showQuickPick(kindOptions);
+    if (!pick) {
+        return undefined;
+    }
+    return pick.resultValue;
 }
 
 async function updateJSONFile(filePath: string, fn: (json: any) => void): Promise<void> {

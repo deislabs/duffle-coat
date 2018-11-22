@@ -40,6 +40,11 @@
                     "command": "dufflecoat.generate",
                     "when": "resourceFilename == bundle.json",
                     "group": "9"
+                },
+                {
+                    "command": "dufflecoat.generate",
+                    "when": "resourceFilename == bundle.cnab",
+                    "group": "9"
                 }
             ]
         }
