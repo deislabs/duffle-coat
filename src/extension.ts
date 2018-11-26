@@ -18,7 +18,7 @@ import * as duffle from './duffle/duffle';
 // to not include a top-level directory called duffle-bag-pathfinding.  And fs.rename
 // was refusing to let me unzip to a temp location and move that directory to the desired
 // location.  So a bit more digging needed.
-const DUFFLE_BAG_ZIP_LOCATION = "https://itowlsonmsbatest.blob.core.windows.net/dbag/duffle-bag-thick-bundles.zip";
+const DUFFLE_BAG_ZIP_LOCATION = "https://itowlsonmsbatest.blob.core.windows.net/dbag/duffle-bag-latest.zip";
 
 export function activate(context: vscode.ExtensionContext) {
     const disposables = [
