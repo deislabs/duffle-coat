@@ -3,13 +3,16 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 
-import { fileBundleSelection, repoBundleSelection, BundleSelection, parseNameOnly, localBundleSelection, promptBundleFile, bundleContent } from './utils/bundleselection';
+import { fileBundleSelection, repoBundleSelection, BundleSelection, parseNameOnly, localBundleSelection, promptBundleFile, bundleContent, suggestName } from './utils/bundleselection';
 import { RepoBundle, RepoBundleRef, BundleManifest, LocalBundleRef, LocalBundle } from './duffle/duffle.objectmodel';
 import { downloadZip, downloadTar } from './utils/download';
 import { failed, Errorable } from './utils/errorable';
 import { fs } from './utils/fs';
 import { Cancellable, cancelled, accepted } from './utils/cancellable';
 import { longRunning } from './utils/host';
+import { cantHappen } from './utils/never';
+import * as shell from './utils/shell';
+import * as duffle from './duffle/duffle';
 
 // TODO: We won't be able to use this for real - I had to rework the zip file structure
 // to not include a top-level directory called duffle-bag-pathfinding.  And fs.rename
@@ -71,11 +74,16 @@ async function generateLocalBundle(bundle: LocalBundle): Promise<void> {
 }
 
 async function generateCore(bundlePick: BundleSelection): Promise<void> {
-    const name = safeName(bundlePick.label);
+    const name = suggestName(bundlePick);
 
     const bundleInfo = await bundleContent(bundlePick);
     if (failed(bundleInfo)) {
         vscode.window.showErrorMessage(bundleInfo.error[0]);
+        return;
+    }
+
+    const bundleKind = await promptBundleKind();
+    if (!bundleKind) {
         return;
     }
 
@@ -121,7 +129,7 @@ async function generateCore(bundlePick: BundleSelection): Promise<void> {
         }
     }
 
-    const sb = await setBundle(g.value.folder, bundleInfo.result.manifest, bundleInfo.result.text);
+    const sb = await setBundle(g.value.folder, bundleInfo.result.manifest, bundleInfo.result.text, bundlePick, bundleKind === BundleKind.Full);
     if (failed(sb)) {
         vscode.window.showErrorMessage(sb.error[0]);
         return;
@@ -150,6 +158,23 @@ async function generateCore(bundlePick: BundleSelection): Promise<void> {
     }
 }
 
+enum BundleKind {
+    Full = 1,
+    ManifestOnly
+}
+
+async function promptBundleKind(): Promise<BundleKind | undefined> {
+    const kindOptions = [
+        { label: 'Full bundle (include all images in installer)', resultValue: BundleKind.Full },
+        { label: 'Manifest only (installer will pull images from registry)', resultValue: BundleKind.ManifestOnly },
+    ];
+    const pick = await vscode.window.showQuickPick(kindOptions);
+    if (!pick) {
+        return undefined;
+    }
+    return pick.resultValue;
+}
+
 async function updateJSONFile(filePath: string, fn: (json: any) => void): Promise<void> {
     const fileText = await fs.readFile(filePath, { encoding: 'utf8' });
     const json = JSON.parse(fileText);
@@ -157,15 +182,25 @@ async function updateJSONFile(filePath: string, fn: (json: any) => void): Promis
     await fs.writeFile(filePath, JSON.stringify(json, undefined, 2));
 }
 
-async function setBundle(folder: string, bundle: BundleManifest, bundleText: string): Promise<Errorable<null>> {
+async function setBundle(folder: string, bundle: BundleManifest, bundleText: string, bundlePick: BundleSelection, wantFullBundle: boolean): Promise<Errorable<null>> {
     const signed = bundleText.startsWith('-');
     const siSignedBundleFile = path.join(folder, "data", "bundle.cnab");
     const siBundleManifest = path.join(folder, "data", "bundle.json");
+    const siFullBundleFile = path.join(folder, "data", "bundle.tgz");
     const siRootPackageJSON = path.join(folder, "package.json");
     const siAppPackageJSON = path.join(folder, "app", "package.json");
     const siRootPackageLock = path.join(folder, "package-lock.json");
     const siAppPackageLock = path.join(folder, "app", "package-lock.json");
     const siAppHTML = path.join(folder, "app", "app.html");
+
+    if (wantFullBundle) {
+        const exportResult = await longRunning("Exporting required images...", () =>
+            exportBundleTo(bundlePick, siFullBundleFile)
+        );
+        if (failed(exportResult)) {
+            return { succeeded: false, error: [`Can't export full bundle file to self-installer: ${exportResult.error[0]}`] };
+        }
+    }
 
     try {
         await fs.writeFile(siBundleManifest, JSON.stringify(bundle, undefined, 2));
@@ -239,6 +274,16 @@ async function setBundle(folder: string, bundle: BundleManifest, bundleText: str
     }
 
     return { succeeded: true, result: null };
+}
+
+async function exportBundleTo(bundlePick: BundleSelection, outputFile: string): Promise<Errorable<null>> {
+    if (bundlePick.kind === 'file') {
+        return await duffle.exportFile(shell.shell, bundlePick.path, outputFile);
+    }
+    if (bundlePick.kind === 'local' || bundlePick.kind === 'repo') {
+        return await duffle.exportBundle(shell.shell, bundlePick.bundle, outputFile);
+    }
+    return cantHappen(bundlePick);
 }
 
 async function downloadDuffleBinaries(targetFolder: string): Promise<Errorable<null>> {
