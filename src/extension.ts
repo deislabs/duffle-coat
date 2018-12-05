@@ -13,12 +13,13 @@ import { longRunning } from './utils/host';
 import { cantHappen } from './utils/never';
 import * as shell from './utils/shell';
 import * as duffle from './duffle/duffle';
+import { move } from 'fs-extra';
 
-// TODO: We won't be able to use this for real - I had to rework the zip file structure
-// to not include a top-level directory called duffle-bag-pathfinding.  And fs.rename
-// was refusing to let me unzip to a temp location and move that directory to the desired
-// location.  So a bit more digging needed.
-const DUFFLE_BAG_ZIP_LOCATION = "https://itowlsonmsbatest.blob.core.windows.net/dbag/duffle-bag-latest.zip";
+// TODO: Change to the GitHub release link once public
+const DUFFLE_BAG_VERSION = 'master';
+const DUFFLE_BAG_ZIP_LOCATION = "https://itowlsonmsbatest.blob.core.windows.net/dbag/duffle-bag-master-test-expand.zip";
+// const DUFFLE_BAG_VERSION = '0.0.1';
+// const DUFFLE_BAG_ZIP_LOCATION = `https://github.com/deislabs/duffle-bag/archive/${DUFFLE_BAG_VERSION}.zip`;
 
 export function activate(context: vscode.ExtensionContext) {
     const disposables = [
@@ -120,11 +121,19 @@ async function generateCore(bundlePick: BundleSelection): Promise<void> {
     }
 
     if (action === FolderAction.Overwrite || action === FolderAction.New) {
+        const tempFolder = folder + '_tmp';
         const dl = await longRunning("Downloading self-installer template...", () =>
-            downloadZip(DUFFLE_BAG_ZIP_LOCATION, folder)
+            downloadZip(DUFFLE_BAG_ZIP_LOCATION, tempFolder)
         );
         if (failed(dl)) {
             vscode.window.showErrorMessage(`Downloading self-installer template failed: ${dl.error[0]}`);
+            return;
+        }
+        try {
+            await move(path.join(tempFolder, `duffle-bag-${DUFFLE_BAG_VERSION}`), folder);
+            await fs.remove(tempFolder);
+        } catch (e) {
+            vscode.window.showErrorMessage(`Unpacking self-installer template failed: ${e}`);
             return;
         }
     }
