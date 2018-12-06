@@ -5,7 +5,7 @@ import * as path from 'path';
 
 import { fileBundleSelection, repoBundleSelection, BundleSelection, parseNameOnly, localBundleSelection, promptBundleFile, bundleContent, suggestName } from './utils/bundleselection';
 import { RepoBundle, RepoBundleRef, BundleManifest, LocalBundleRef, LocalBundle } from './duffle/duffle.objectmodel';
-import { downloadZip, downloadTar } from './utils/download';
+import { downloadZip, download } from './utils/download';
 import { failed, Errorable } from './utils/errorable';
 import { fs } from './utils/fs';
 import { Cancellable, cancelled, accepted } from './utils/cancellable';
@@ -287,8 +287,8 @@ async function exportBundleTo(bundlePick: BundleSelection, outputFile: string): 
 }
 
 async function downloadDuffleBinaries(targetFolder: string): Promise<Errorable<null>> {
-    const dufflebinPath = path.join(targetFolder, 'dufflebin');
-    const dltasks = PLATFORMS.map((p) => downloadDuffleBinary(dufflebinPath, p));
+    const dufflebinBasePath = path.join(targetFolder, 'dufflebin');
+    const dltasks = PLATFORMS.map((p) => downloadDuffleBinary(dufflebinBasePath, p));
     const dlresults = await Promise.all(dltasks);
     const firstFail = dlresults.find((r) => failed(r));
     if (firstFail) {
@@ -297,12 +297,18 @@ async function downloadDuffleBinaries(targetFolder: string): Promise<Errorable<n
     return { succeeded: true, result: null };
 }
 
-async function downloadDuffleBinary(dufflebinPath: string, platform: Platform): Promise<Errorable<null>> {
-    // TODO: for testing purposes, this is the Draft download location.  It needs to be replaced
-    // with the Duffle download location.
-    // TODO: make sure this doesn't conflict with having the directories .gitkeep-ed in the template.
-    const source = `https://azuredraft.blob.core.windows.net/draft/draft-v0.15.0-${platform}-amd64.tar.gz`;
-    return await downloadTar(source, dufflebinPath);
+function dufflebinPlatformPath(basePath: string, platform: Platform) {
+    return path.join(basePath, `${platform}-amd64`);
+}
+
+async function downloadDuffleBinary(dufflebinBasePath: string, platform: Platform): Promise<Errorable<null>> {
+    const suffix = platform === 'windows' ? '.exe' : '';
+    const version = '0.1.0-ralpha.4%2Bdramallamabuie';
+    const source = `https://github.com/deislabs/duffle/releases/download/${version}/duffle-${platform}-amd64${suffix}`;
+    const destinationDir = dufflebinPlatformPath(dufflebinBasePath, platform);
+    const destinationFile = 'duffle' + suffix;
+    const destination = path.join(destinationDir, destinationFile);
+    return await download(source, destination);
 }
 
 enum FolderAction { New, Overwrite, Update }
