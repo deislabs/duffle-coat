@@ -16,10 +16,10 @@ import * as duffle from './duffle/duffle';
 import { move } from 'fs-extra';
 
 // TODO: Change to the GitHub release link once public
-const DUFFLE_BAG_VERSION = 'master';
-const DUFFLE_BAG_ZIP_LOCATION = "https://itowlsonmsbatest.blob.core.windows.net/dbag/duffle-bag-master-test-expand.zip";
-// const DUFFLE_BAG_VERSION = '0.0.1';
-// const DUFFLE_BAG_ZIP_LOCATION = `https://github.com/deislabs/duffle-bag/archive/${DUFFLE_BAG_VERSION}.zip`;
+// const DUFFLE_BAG_VERSION = 'master';
+// const DUFFLE_BAG_ZIP_LOCATION = "https://itowlsonmsbatest.blob.core.windows.net/dbag/duffle-bag-master-test-expand.zip";
+const DUFFLE_BAG_VERSION = '0.0.4';
+const DUFFLE_BAG_ZIP_LOCATION = `https://github.com/deislabs/duffle-bag/archive/${DUFFLE_BAG_VERSION}.zip`;
 
 export function activate(context: vscode.ExtensionContext) {
     const disposables = [
