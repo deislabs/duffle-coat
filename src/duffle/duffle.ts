@@ -1,11 +1,13 @@
 import * as path from 'path';
-import * as fs from 'fs';
 import * as vscode from 'vscode';
 
 import * as config from '../config/config';
-import { Errorable } from '../utils/errorable';
+import { Errorable, failed } from '../utils/errorable';
 import * as shell from '../utils/shell';
 import { RepoBundle, LocalBundle } from './duffle.objectmodel';
+import { withTempDirectory } from '../utils/tempfile';
+import { fs } from '../utils/fs';
+import { localBundlePath } from './duffle.paths';
 // import { sharedTerminal } from './sharedterminal';
 // import * as pairs from '../utils/pairs';
 
@@ -98,14 +100,39 @@ export async function pull(sh: shell.Shell, bundleName: string): Promise<Errorab
     return await invokeObj(sh, 'pull', `${bundleName} --insecure`, {}, (s) => null);
 }
 
-export async function exportFile(sh: shell.Shell, bundleFilePath: string, outputFile: string): Promise<Errorable<null>> {
+export async function exportFile(sh: shell.Shell, bundleFilePath: string, outputFile: string, thick: boolean): Promise<Errorable<null>> {
     const directory = path.dirname(bundleFilePath);
-    return await invokeObj(sh, 'export', `"${directory}" -o "${outputFile}" --full`, {}, (_) => null);
+    const insecureFlag = bundleFilePath.endsWith('.json') ? '--insecure' : '';
+    const modeFlag = thick ? '' : '-t';
+    return await invokeObj(sh, 'export', `"${directory}" ${modeFlag} -o "${outputFile}" ${insecureFlag}`, {}, (_) => null);
 }
 
-export async function exportBundle(sh: shell.Shell, bundleName: string, outputFile: string): Promise<Errorable<null>> {
-    // TODO: currently not working
-    return { succeeded: false, error: ["Cannot export full bundle from repo or local store"] };
+export async function exportBundle(sh: shell.Shell, bundleName: string, destination: string, thick: boolean): Promise<Errorable<null>> {
+    // Workaround until "duffle export bundleref..." lands:
+    // Because export currently takes a directory, we need to copy the bundle
+    // from local storage to a temp directory, and export that.
+    // Once duffle export takes a bundle reference, we can get rid of
+    // all this!
+    return await withTempDirectory<Errorable<null>>(async (tempdir) => {
+        async function gettempcopydest(sourcePath: string): Promise<string> {
+            const text = await fs.readFile(sourcePath, 'utf8');
+            if (text.startsWith('-')) {
+                return path.join(tempdir, 'bundle.cnab');
+            } else {
+                return path.join(tempdir, 'bundle.json');
+            }
+        }
+        const bundleParse = bundleName.split(':');
+        const bundleFile = await localBundlePath(bundleParse[0], bundleParse[1]);
+        if (failed(bundleFile)) {
+            return { succeeded: false, error: bundleFile.error };
+        }
+        const tempFile = await gettempcopydest(bundleFile.result);
+        await fs.copyFile(bundleFile.result, tempFile);
+        const insecureFlag = tempFile.endsWith('.json') ? '--insecure' : '';
+        const modeFlag = thick ? '' : '-t';
+        return await invokeObj(sh, 'export', `"${tempdir}" ${modeFlag} -o "${destination}" ${insecureFlag}`, {}, (s) => null);
+    });
 }
 
 // export function showStatus(bundleName: string): void {
@@ -114,7 +141,7 @@ export async function exportBundle(sh: shell.Shell, bundleName: string, outputFi
 
 export async function build(sh: shell.Shell, folderPath: string): Promise<Errorable<null>> {
     const buildFile = path.join(folderPath, 'duffle.toml');
-    if (!fs.existsSync(buildFile)) {
+    if (!await fs.exists(buildFile)) {
         return { succeeded: false, error: [`${folderPath} does not contain a duffle.toml file`] };
     }
     // duffle build works *only* from the folder containing duffle.toml

@@ -287,10 +287,10 @@ async function setBundle(folder: string, bundle: BundleManifest, bundleText: str
 
 async function exportBundleTo(bundlePick: BundleSelection, outputFile: string): Promise<Errorable<null>> {
     if (bundlePick.kind === 'file') {
-        return await duffle.exportFile(shell.shell, bundlePick.path, outputFile);
+        return await duffle.exportFile(shell.shell, bundlePick.path, outputFile, true);
     }
     if (bundlePick.kind === 'local' || bundlePick.kind === 'repo') {
-        return await duffle.exportBundle(shell.shell, bundlePick.bundle, outputFile);
+        return await duffle.exportBundle(shell.shell, bundlePick.bundle, outputFile, true);
     }
     return cantHappen(bundlePick);
 }
