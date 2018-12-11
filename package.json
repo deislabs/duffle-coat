@@ -3,12 +3,17 @@
     "displayName": "Duffle Coat",
     "description": "Generates CNAB self-installers",
     "version": "0.0.1",
+    "preview": true,
     "publisher": "ms-kubernetes-tools",
     "engines": {
         "vscode": "^1.27.0"
     },
     "categories": [
         "Other"
+    ],
+    "keywords": [
+        "cnab",
+        "duffle"
     ],
     "activationEvents": [
         "onCommand:dufflecoat.generate"
@@ -80,5 +85,12 @@
         "tslint": "^5.8.0",
         "@types/node": "^8.10.25",
         "@types/mocha": "^2.2.42"
+    },
+    "extensionDependencies": [
+        "ms-kubernetes-tools.duffle-vscode"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/deislabs/duffle-coat"
     }
 }
