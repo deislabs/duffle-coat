@@ -309,7 +309,7 @@ function dufflebinPlatformPath(basePath: string, platform: Platform) {
 
 async function downloadDuffleBinary(dufflebinBasePath: string, platform: Platform): Promise<Errorable<null>> {
     const suffix = platform === 'windows' ? '.exe' : '';
-    const version = '0.1.0-ralpha.4%2Bdramallamabuie';
+    const version = '0.1.0-ralpha.5%2Benglishrose';
     const source = `https://github.com/deislabs/duffle/releases/download/${version}/duffle-${platform}-amd64${suffix}`;
     const destinationDir = dufflebinPlatformPath(dufflebinBasePath, platform);
     const destinationFile = 'duffle' + suffix;

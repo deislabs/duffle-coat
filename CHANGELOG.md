@@ -1,7 +1,8 @@
 # Change Log
-All notable changes to the "duffle-coat" extension will be documented in this file.
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+## 0.0.5
+- Compatible with Duffle 0.0.5 'English Rose'
 
-## [Unreleased]
-- Initial release
+## 0.0.1
+- Initial release for Kubecon North America 2018
+- Compatible with Duffle 0.0.4 'Dramallamabuie'
