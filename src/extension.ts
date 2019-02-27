@@ -15,7 +15,7 @@ import * as shell from './utils/shell';
 import * as duffle from './duffle/duffle';
 import { move } from 'fs-extra';
 
-const DUFFLE_BAG_VERSION = '0.0.4';
+const DUFFLE_BAG_VERSION = '0.0.5';
 const DUFFLE_BAG_ZIP_LOCATION = `https://github.com/deislabs/duffle-bag/archive/${DUFFLE_BAG_VERSION}.zip`;
 
 export function activate(context: vscode.ExtensionContext) {
