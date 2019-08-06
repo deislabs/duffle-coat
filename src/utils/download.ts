@@ -10,10 +10,13 @@ import { Errorable, failed } from './errorable';
 
 const extractAsync = promisify(extract);
 
-export async function download(source: string, destination: string): Promise<Errorable<null>> {
+export async function download(source: string, destination: string, progressFunc?: (bytes: number) => void): Promise<Errorable<null>> {
     try {
-        const content = await request.get(source, { encoding: null });
-        await fs.writeFile(destination, content);
+        const r = request.get(source, { encoding: null });
+        if (progressFunc) {
+            r.on('data', (data: Buffer | string) => progressFunc(data.length));
+        }
+        await fs.writeFile(destination, await r);
         return { succeeded: true, result: null };
     } catch (e) {
         return { succeeded: false, error: [`${e}`] };
@@ -73,4 +76,19 @@ async function untar(sourceFile: string, destinationFolder: string): Promise<Err
     } catch (e) {
         return { succeeded: false, error: [`tar extract failed: ${e}`] };
     }
+}
+
+export function downloadProgressTracker(reporter: (msg: string) => void): (bytes: number) => void {
+    let done = 0;
+    let lastms = new Date().valueOf();  // We need to throttle or VS Code progress reporting stalls
+    const progressFunc = (bytes: number) => {
+        done += bytes;
+        const nowms = new Date().valueOf();
+        if (nowms - lastms >= 1000) {
+            const mb = Math.floor(done / 1000000);
+            reporter(`${mb}MB complete`);
+            lastms = nowms;
+        }
+    };
+    return progressFunc;
 }
