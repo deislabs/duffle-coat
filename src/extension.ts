@@ -5,11 +5,11 @@ import * as path from 'path';
 
 import { fileBundleSelection, repoBundleSelection, BundleSelection, parseNameOnly, localBundleSelection, promptBundleFile, bundleContent, suggestName } from './utils/bundleselection';
 import { RepoBundle, RepoBundleRef, BundleManifest, LocalBundleRef, LocalBundle } from './duffle/duffle.objectmodel';
-import { downloadZip, download } from './utils/download';
+import { downloadZip, download, downloadProgressTracker } from './utils/download';
 import { failed, Errorable } from './utils/errorable';
 import { fs } from './utils/fs';
 import { Cancellable, cancelled, accepted } from './utils/cancellable';
-import { longRunning } from './utils/host';
+import { longRunning, longRunningWithProgress } from './utils/host';
 import { cantHappen } from './utils/never';
 import * as shell from './utils/shell';
 import * as duffle from './duffle/duffle';
@@ -141,8 +141,8 @@ async function generateCore(bundlePick: BundleSelection): Promise<void> {
         return;
     }
 
-    const dlbin = await longRunning("Downloading Duffle binaries...", () =>
-        downloadDuffleBinaries(g.value.folder)
+    const dlbin = await longRunningWithProgress("Downloading Duffle binaries", (reportFunc) =>
+        downloadDuffleBinaries(g.value.folder, reportFunc)
     );
     if (failed(dlbin)) {
         vscode.window.showErrorMessage(`Downloading Duffle binaries failed: ${dlbin.error[0]}`);
@@ -292,9 +292,10 @@ async function exportBundleTo(bundlePick: BundleSelection, outputFile: string): 
     return cantHappen(bundlePick);
 }
 
-async function downloadDuffleBinaries(targetFolder: string): Promise<Errorable<null>> {
+async function downloadDuffleBinaries(targetFolder: string, progressReporter: (msg: string) => void): Promise<Errorable<null>> {
     const dufflebinBasePath = path.join(targetFolder, 'dufflebin');
-    const dltasks = PLATFORMS.map((p) => downloadDuffleBinary(dufflebinBasePath, p));
+    const progressFunc = downloadProgressTracker(progressReporter);
+    const dltasks = PLATFORMS.map((p) => downloadDuffleBinary(dufflebinBasePath, p, progressFunc));
     const dlresults = await Promise.all(dltasks);
     const firstFail = dlresults.find((r) => failed(r));
     if (firstFail) {
@@ -307,14 +308,14 @@ function dufflebinPlatformPath(basePath: string, platform: Platform) {
     return path.join(basePath, `${platform}-amd64`);
 }
 
-async function downloadDuffleBinary(dufflebinBasePath: string, platform: Platform): Promise<Errorable<null>> {
+async function downloadDuffleBinary(dufflebinBasePath: string, platform: Platform, progressFunc: (bytes: number) => void): Promise<Errorable<null>> {
     const suffix = platform === 'windows' ? '.exe' : '';
-    const version = '0.1.0-ralpha.5%2Benglishrose';
+    const version = '0.2.0-beta.3';
     const source = `https://github.com/deislabs/duffle/releases/download/${version}/duffle-${platform}-amd64${suffix}`;
     const destinationDir = dufflebinPlatformPath(dufflebinBasePath, platform);
     const destinationFile = 'duffle' + suffix;
     const destination = path.join(destinationDir, destinationFile);
-    return await download(source, destination);
+    return await download(source, destination, progressFunc);
 }
 
 enum FolderAction { New, Overwrite, Update }

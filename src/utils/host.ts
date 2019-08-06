@@ -14,3 +14,14 @@ export async function longRunning<T>(title: string, action: () => Promise<T>): P
     };
     return await vscode.window.withProgress(options, (_) => action());
 }
+
+export async function longRunningWithProgress<T>(title: string, action: (reportProgress: (msg: string) => void) => Promise<T>): Promise<T> {
+    const options = {
+        location: vscode.ProgressLocation.Notification,
+        title: title
+    };
+    return await vscode.window.withProgress(options, (p) => {
+        const reportFunc: (msg: string) => void = (msg) => p.report({ message: msg });
+        return action(reportFunc);
+    });
+}
