@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.3.1
+
+- Fix for exporting thick bundles into self-installers
+
 ## 0.3.0
 - Update to Duffle binaries and template 0.3.0
 
