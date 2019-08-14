@@ -1,5 +1,8 @@
 # Change Log
 
+## 0.3.0
+- Update to Duffle binaries and template 0.3.0
+
 ## 0.0.5
 - Compatible with Duffle 0.0.5 'English Rose'
 
