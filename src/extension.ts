@@ -5,7 +5,7 @@ import * as path from 'path';
 
 import { fileBundleSelection, repoBundleSelection, BundleSelection, parseNameOnly, localBundleSelection, promptBundleFile, bundleContent, suggestName } from './utils/bundleselection';
 import { RepoBundle, RepoBundleRef, BundleManifest, LocalBundleRef, LocalBundle } from './duffle/duffle.objectmodel';
-import { downloadZip, download, downloadProgressTracker } from './utils/download';
+import { downloadZip, download, downloadProgressTracker, downloadWithCache } from './utils/download';
 import { failed, Errorable } from './utils/errorable';
 import { fs } from './utils/fs';
 import { Cancellable, cancelled, accepted } from './utils/cancellable';
@@ -14,11 +14,17 @@ import { cantHappen } from './utils/never';
 import * as shell from './utils/shell';
 import * as duffle from './duffle/duffle';
 import { move } from 'fs-extra';
+import { ExtensionFileCache } from './utils/cache';
 
+const DUFFLE_VERSION = '0.3.0-beta.3';
 const DUFFLE_BAG_VERSION = '0.3.0';
 const DUFFLE_BAG_ZIP_LOCATION = `https://github.com/deislabs/duffle-bag/archive/${DUFFLE_BAG_VERSION}.zip`;
 
+let DUFFLE_BINARIES_CACHE: ExtensionFileCache | null = null;
+
 export function activate(context: vscode.ExtensionContext) {
+    DUFFLE_BINARIES_CACHE = ExtensionFileCache.create(context, 'dufflebin');
+
     const disposables = [
         vscode.commands.registerCommand('dufflecoat.generate', generate)
     ];
@@ -310,12 +316,16 @@ function dufflebinPlatformPath(basePath: string, platform: Platform) {
 
 async function downloadDuffleBinary(dufflebinBasePath: string, platform: Platform, progressFunc: (bytes: number) => void): Promise<Errorable<null>> {
     const suffix = platform === 'windows' ? '.exe' : '';
-    const version = '0.3.0-beta.3';
-    const source = `https://github.com/deislabs/duffle/releases/download/${version}/duffle-${platform}-amd64${suffix}`;
+    const source = `https://github.com/deislabs/duffle/releases/download/${DUFFLE_VERSION}/duffle-${platform}-amd64${suffix}`;
     const destinationDir = dufflebinPlatformPath(dufflebinBasePath, platform);
     const destinationFile = 'duffle' + suffix;
     const destination = path.join(destinationDir, destinationFile);
-    return await download(source, destination, progressFunc);
+    if (DUFFLE_BINARIES_CACHE) {  // which should always exist
+        const cacheKey = `${DUFFLE_VERSION}-${platform}-${destinationFile}`;
+        return await downloadWithCache(DUFFLE_BINARIES_CACHE, cacheKey, source, destination, progressFunc);
+    } else {
+        return await download(source, destination, progressFunc);
+    }
 }
 
 enum FolderAction { New, Overwrite, Update }
