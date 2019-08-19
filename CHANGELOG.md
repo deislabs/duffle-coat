@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.3.3
+
+- Update to template 0.3.3 (UI fixes and improvements)
+
 ## 0.3.2
 
 - Cache downloaded Duffle binaries
