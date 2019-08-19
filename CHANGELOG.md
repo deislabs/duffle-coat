@@ -1,5 +1,10 @@
 # Change Log
 
+## 0.3.2
+
+- Cache downloaded Duffle binaries
+- Update to template 0.3.2 (fixes for Linux packaging)
+
 ## 0.3.1
 
 - Fix for exporting thick bundles into self-installers
