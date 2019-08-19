@@ -6,7 +6,8 @@ import mkdirp = require('mkdirp');
 import * as tar from 'tar';
 
 import { fs } from './fs';
-import { Errorable, failed } from './errorable';
+import { Errorable, failed, succeeded } from './errorable';
+import { ExtensionFileCache } from './cache';
 
 const extractAsync = promisify(extract);
 
@@ -21,6 +22,22 @@ export async function download(source: string, destination: string, progressFunc
     } catch (e) {
         return { succeeded: false, error: [`${e}`] };
     }
+}
+
+export async function downloadWithCache(cache: ExtensionFileCache, key: string, source: string, destination: string, progressFunc?: (bytes: number) => void): Promise<Errorable<null>> {
+    if (await cache.contains(key)) {
+        const err = await cache.copyFromCache(key, destination);
+        if (succeeded(err)) {
+            return err;
+        }
+        // If fetching from cache failed, fall through to the download-from-origin path
+    }
+
+    const err = await download(source, destination, progressFunc);
+    if (succeeded(err)) {
+        await cache.copyToCache(key, destination);  // ignore errors
+    }
+    return err;
 }
 
 export async function downloadZip(source: string, destinationFolder: string): Promise<Errorable<null>> {
