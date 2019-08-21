@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.3.4
+
+- Update to template 0.3.4 (UI fixes and improvements) and Duffle 0.3.1
+
 ## 0.3.3
 
 - Update to template 0.3.3 (UI fixes and improvements)
