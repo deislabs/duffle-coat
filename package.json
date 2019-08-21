@@ -2,7 +2,7 @@
     "name": "duffle-coat",
     "displayName": "Duffle Coat",
     "description": "Generates CNAB self-installers",
-    "version": "0.3.3",
+    "version": "0.3.4",
     "preview": true,
     "publisher": "ms-kubernetes-tools",
     "engines": {

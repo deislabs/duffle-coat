@@ -16,8 +16,8 @@ import * as duffle from './duffle/duffle';
 import { move } from 'fs-extra';
 import { ExtensionFileCache } from './utils/cache';
 
-const DUFFLE_VERSION = '0.3.0-beta.3';
-const DUFFLE_BAG_VERSION = '0.3.3';
+const DUFFLE_VERSION = '0.3.1-beta.1';
+const DUFFLE_BAG_VERSION = '0.3.4';
 const DUFFLE_BAG_ZIP_LOCATION = `https://github.com/deislabs/duffle-bag/archive/${DUFFLE_BAG_VERSION}.zip`;
 
 let DUFFLE_BINARIES_CACHE: ExtensionFileCache | null = null;
