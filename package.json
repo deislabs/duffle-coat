@@ -4,6 +4,7 @@
     "description": "Generates CNAB self-installers",
     "version": "0.3.4",
     "preview": true,
+    "icon": "resources/duffle-coat.png",
     "publisher": "ms-kubernetes-tools",
     "engines": {
         "vscode": "^1.27.0"
